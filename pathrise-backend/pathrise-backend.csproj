@@ -1,9 +1,33 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>netcoreapp3.1</TargetFramework>
     <RootNamespace>pathrise_backend</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <None Remove="jobBoards.json" />
+    <None Remove="job_opportunities.csv" />
+    <None Remove="pathrise-6a289-firebase-adminsdk-2p2b1-e75644c732.json" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="jobBoards.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="job_opportunities.csv">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+    <Content Include="pathrise-6a289-firebase-adminsdk-2p2b1-e75644c732.json">
+      <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+    </Content>
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CsvHelper" Version="23.0.0" />
+    <PackageReference Include="Newtonsoft.Json" Version="12.0.3" />
+	<PackageReference Include="Google.Cloud.Firestore" Version="1.1.0-beta01" />
+  </ItemGroup>
 
 </Project>
