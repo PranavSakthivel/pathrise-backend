@@ -5,34 +5,34 @@ using System.Globalization;
 using System.IO;
 using Google.Cloud.Firestore;
 using Newtonsoft.Json.Linq;
-using Newtonsoft.Json;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace pathrise_backend
 {
     class Program
     {
-        
-        static void Main(string[] args)
+        private static Dictionary<string, string> BoardMap = new Dictionary<string, string>();
+        static async Task Main(string[] args)
         {
             // Variables for paths
-            string opportunitiesFilePath, jobBoardsPath, project;
-            project = "pathrise-6a289";
-            opportunitiesFilePath = "job_opportunities_limited.csv"; //CHANGE!
+            string OpportunitiesFilePath, jobBoardsPath, ProjectName;
+            ProjectName = "pathrise-6a289";
+            OpportunitiesFilePath = "job_opportunities.csv"; //CHANGE!
             jobBoardsPath = "jobBoards.json";
 
             //Connect to Firestore
-            FirestoreDb db = ConnectToDb(project);
+            FirestoreDb db = ConnectToDb(ProjectName);
 
             // Open opportunities.csv
             StreamReader reader = null;
             try
             {
-                reader = new StreamReader(opportunitiesFilePath);
+                reader = new StreamReader(OpportunitiesFilePath);
             }
             catch (Exception e)
             {
-                Console.WriteLine("Unable to open file: " + opportunitiesFilePath);
+                Console.WriteLine("Unable to open file: " + OpportunitiesFilePath);
                 Console.WriteLine(e); //debug
                 Environment.Exit(-1);
             }
@@ -40,8 +40,22 @@ namespace pathrise_backend
 
             CsvReader csv = new CsvReader(reader, CultureInfo.InvariantCulture);
 
-            BuildBoardList(jobBoardsPath, db);
-            ParseCSV(csv, db);
+            await BuildBoardList(jobBoardsPath, db);
+            await ParseCSV(csv, db);
+        }
+
+        static StreamReader GetFileReader(string filePath)
+        {
+            StreamReader reader = null;
+            try
+            {
+                reader = new StreamReader(filePath);
+            } catch (Exception)
+            {
+                Console.WriteLine("Unable to open file: " + filePath);
+                Environment.Exit(-1);
+            }
+            return reader;
         }
 
         static FirestoreDb ConnectToDb(string project)
@@ -63,26 +77,28 @@ namespace pathrise_backend
             }
             return db;
         }
-        static async void ParseCSV(CsvReader csv, FirestoreDb db)
+        static async Task ParseCSV(CsvReader csv, FirestoreDb db)
         {
+            
             csv.Read();
-            csv.ReadHeader();
+            //csv.ReadHeader(); //needed?
             while (csv.Read())
             {
                 Offer record = csv.GetRecord<Offer>();
                 Dictionary<string, object> offer = new Dictionary<string, object>
                 {
-                    { "First", "Alan" },
-                    { "Middle", "Mathison" },
-                    { "Last", "Turing" },
-                    { "Born", 1912 }
+                    { "JobTitle", record.JobTitle},
+                    { "Company", record.Company },
+                    { "JobUrl", record.JobUrl },
+                    { "JobSource", FindJobSource(record.JobUrl, record.Company) } //TODO: UPDATE
                 };
-                await db.Collection("offers").Document(record.Id.ToString()).SetAsync(offer);
-                //Console.WriteLine(record.Id + record.jobTitle + record.company + record.jobUrl);
+                // await db.Collection("offers").Document(record.Id.ToString()).SetAsync(offer);
+                Console.WriteLine("Added Offer: " + record.Id + ", " + record.Company + ", " + record.JobUrl + 
+                    ", " + FindJobSource(record.JobUrl, record.Company)); // debug
             }
         }
 
-        static void BuildBoardList(string jobBoardsPath, FirestoreDb db)
+        static async Task BuildBoardList(string jobBoardsPath, FirestoreDb db)
         {
             StreamReader reader = null;
             try
@@ -95,10 +111,82 @@ namespace pathrise_backend
                 Environment.Exit(-1);
             }
 
-            CollectionReference colRef = db.Collection("boards");
-            JsonTextReader jsonTextReader = new JsonTextReader(reader);
-            JObject o2 = (JObject)JToken.ReadFrom(jsonTextReader);
-            Console.WriteLine(o2);
+            string json = reader.ReadToEnd();
+            JObject boards = JObject.Parse(json);
+
+            foreach(JObject b in boards["job_boards"])
+            {
+                // Add urls to local data structure to get source for job offers
+                try
+                {
+                    BoardMap.Add(b["root_domain"].ToString(), b["name"].ToString());
+                }
+                catch (ArgumentException)
+                {
+                    BoardMap[b["root_domain"].ToString()] = b["name"].ToString(); //check logic
+                }
+                
+
+                // Add to database 
+                Dictionary<string, object> board = new Dictionary<string, object>
+                {
+                    { "name", b["name"].ToString()},
+                    { "rating",  b["rating"].ToString()},
+                    { "root_domain",  b["root_domain"].ToString()},
+                    { "logo_file",  b["logo_file"].ToString()}, 
+                    { "description",  b["description"].ToString()}
+                };
+
+                // await db.Collection("boards").Document(b["name"].ToString()).SetAsync(board);
+                Console.WriteLine("Added job board: " + b["name"] + ", " + b["root_domain"]); //debug
+            }
+        }
+
+        static string FindJobSource(string Url, string CompanyName)
+        {
+            // No url given
+            if (Url == "" || Url == null) return "Unknown";
+
+            string host;
+            Uri myUri;
+            
+            // Attempt to parse as actual URL
+            try
+            {
+                myUri = new Uri(Url);
+                host = myUri.Host;
+            } catch (UriFormatException)
+            {
+                // Case: invalid URL
+                return "Unknown";
+            }
+
+            // Good place to check if the URL is valid
+            // 
+
+            // Split URL by "."
+            string[] hostArray = myUri.Host.Split('.');
+            int n = hostArray.Length;
+
+            // Find a better way to check if actual URL
+            if (n < 2) return "Unknown";
+
+            // Console.WriteLine(hostArray[n - 2].ToLower() + "." + hostArray[n - 1].ToLower()); // debug
+
+            // Case: Job Board site
+            string JobBoard;
+            if (BoardMap.TryGetValue(hostArray[n - 2].ToLower() + "." + hostArray[n - 1].ToLower(), out JobBoard))
+            {
+                // Console.WriteLine(JobBoard); // debug
+                return JobBoard;
+            }
+
+            // Case: Company website
+            if (hostArray[n - 2].ToLower() == CompanyName.ToLower()) return "Company Website";
+
+
+            // Case: none of these
+            return "Unknown";
         }
     }
 }
@@ -130,23 +218,3 @@ namespace pathrise_backend
         public string description { get; set; }
     }
 
-
-
-
-/*
-    [FirestoreData]
-    public class Offer
-    {
-        [FirestoreProperty]
-        public string Id { get; set; }
-
-        [FirestoreProperty]
-        public string JobTitle { get; set; }
-
-        [FirestoreProperty]
-        public string Company { get; set; }
-
-        [FirestoreProperty]
-        public string JobUrl { get; set; }
-    }
-*/
