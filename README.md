@@ -60,6 +60,7 @@ Given more time and (increased) database quota, this is what I would add:
 Backend:
  - **Location detection** - Crawl through the provided job URL looking for locations, and save that to the database as well to enable location-based querying in the frontend.
  - **JUnit testing** - unable to set this up due to time constraints
+ - Better error case handling - there are a number of errors not very gracefully handled. 
  - Determine if URL is valid - I have partially done this in my program but it is not fleshed out. There is a segment that checks for URL validity. C# has additional libraries to test this, I wanted to implement a quick check to add that info into the database too. There is a possibility to detect a 404 redirect as well if the job link worked, but the job didn't exist.
  - Customizable parameters - being able to provide own database connection, CSV and JSON files with different names
  - Cleaner flow of code - some things can be taken out of methods or put into helper methods
