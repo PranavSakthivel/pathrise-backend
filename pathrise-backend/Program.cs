@@ -12,9 +12,16 @@ namespace pathrise_backend
 {
     class Program
     {
+        // Flags to write to db
+        private static Boolean write = false;
+        // Map containing all job boards
         private static Dictionary<string, string> BoardMap = new Dictionary<string, string>();
+        // Board to track number of jobs per board
+        private static Dictionary<string, int> JobCountMap = new Dictionary<string, int>();
         static async Task Main(string[] args)
         {
+            // Check if write to db enabled
+            if (args.Length > 0 && args[0].Equals("write")) write = true;
             // Variables for paths
             string OpportunitiesFilePath, jobBoardsPath, ProjectName;
             ProjectName = "pathrise-6a289";
@@ -25,23 +32,19 @@ namespace pathrise_backend
             FirestoreDb db = ConnectToDb(ProjectName);
 
             // Open opportunities.csv
-            StreamReader reader = null;
-            try
-            {
-                reader = new StreamReader(OpportunitiesFilePath);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine("Unable to open file: " + OpportunitiesFilePath);
-                Console.WriteLine(e); //debug
-                Environment.Exit(-1);
-            }
-
-
+            StreamReader reader = GetFileReader(OpportunitiesFilePath);
             CsvReader csv = new CsvReader(reader, CultureInfo.InvariantCulture);
 
+            // read/write to db and csv
             await BuildBoardList(jobBoardsPath, db);
             await ParseCSV(csv, db);
+
+            //Print map
+            Console.WriteLine("\nData Structure for Job Counts (Map)\n");
+            foreach (KeyValuePair<string, int> pair in JobCountMap)
+            {
+                Console.WriteLine(pair.Key + ": " + pair.Value);
+            }
         }
 
         static StreamReader GetFileReader(string filePath)
@@ -60,6 +63,7 @@ namespace pathrise_backend
 
         static FirestoreDb ConnectToDb(string project)
         {
+            // Login to DB using local credentials
             FirestoreDb db = null;
             string path = AppDomain.CurrentDomain.BaseDirectory + @"pathrise-6a289-firebase-adminsdk-2p2b1-e75644c732.json";
             Environment.SetEnvironmentVariable("GOOGLE_APPLICATION_CREDENTIALS", path);
@@ -72,27 +76,57 @@ namespace pathrise_backend
             catch (Exception e)
             {
                 Console.WriteLine("Unable to connect to database with ID: {0}", project);
-                Console.WriteLine(e); //debug
+                // Console.WriteLine(e); //debug
                 Environment.Exit(-1);
             }
             return db;
         }
         static async Task ParseCSV(CsvReader csv, FirestoreDb db)
         {
-            
-            csv.Read();
-            //csv.ReadHeader(); //needed?
+            StreamWriter writer = new StreamWriter("resolution_data.csv");
+            CsvWriter csvWriter = new CsvWriter(writer, CultureInfo.InvariantCulture);
+
+            // Setup CSV headers manually
+            csvWriter.WriteField("ID");
+            csvWriter.WriteField("Job Title");
+            csvWriter.WriteField("Company");
+            csvWriter.WriteField("Job URL");
+            csvWriter.WriteField("Job Source");
+            csvWriter.Flush();
+            csvWriter.NextRecord();
+
+            csv.Read(); // Start reading CSV
+            csv.ReadHeader(); // Read header to not confuse it for data
             while (csv.Read())
             {
                 Offer record = csv.GetRecord<Offer>();
+                // Find Job Source using helper method
+                string JobSource = FindJobSource(record.JobUrl, record.Company);
                 Dictionary<string, object> offer = new Dictionary<string, object>
                 {
                     { "JobTitle", record.JobTitle},
                     { "Company", record.Company },
                     { "JobUrl", record.JobUrl },
-                    { "JobSource", FindJobSource(record.JobUrl, record.Company) } //TODO: UPDATE
+                    { "JobSource", JobSource} 
                 };
-                // await db.Collection("offers").Document(record.Id.ToString()).SetAsync(offer);
+
+                // Write line to CSV
+                csvWriter.WriteRecord(record);
+                csvWriter.WriteField(JobSource);
+                csvWriter.Flush();
+                csvWriter.NextRecord();
+
+                // keep count in the map
+                try
+                {
+                    JobCountMap[JobSource]++;
+                }
+                catch (Exception)
+                {
+
+                }
+
+                if (write) await db.Collection("offers").Document(record.Id.ToString()).SetAsync(offer);
                 Console.WriteLine("Added Offer: " + record.Id + ", " + record.Company + ", " + record.JobUrl + 
                     ", " + FindJobSource(record.JobUrl, record.Company)); // debug
             }
@@ -100,16 +134,11 @@ namespace pathrise_backend
 
         static async Task BuildBoardList(string jobBoardsPath, FirestoreDb db)
         {
-            StreamReader reader = null;
-            try
-            {
-                reader = new StreamReader(jobBoardsPath);
-            }
-            catch
-            {
-                Console.WriteLine("Unable to open file: " + jobBoardsPath);
-                Environment.Exit(-1);
-            }
+            StreamReader reader = GetFileReader(jobBoardsPath);
+
+            // Add other boards
+            JobCountMap.Add("Company Website", 0);
+            JobCountMap.Add("Unknown", 0);
 
             string json = reader.ReadToEnd();
             JObject boards = JObject.Parse(json);
@@ -125,7 +154,17 @@ namespace pathrise_backend
                 {
                     BoardMap[b["root_domain"].ToString()] = b["name"].ToString(); //check logic
                 }
-                
+
+                //add job board to count map
+                try
+                {
+                    JobCountMap.Add(b["name"].ToString(), 0);
+                }
+                catch (ArgumentException)
+                {
+                    JobCountMap[b["name"].ToString()] = 0; 
+                }
+
 
                 // Add to database 
                 Dictionary<string, object> board = new Dictionary<string, object>
@@ -137,7 +176,7 @@ namespace pathrise_backend
                     { "description",  b["description"].ToString()}
                 };
 
-                // await db.Collection("boards").Document(b["name"].ToString()).SetAsync(board);
+                if (write) await db.Collection("boards").Document(b["name"].ToString()).SetAsync(board);
                 Console.WriteLine("Added job board: " + b["name"] + ", " + b["root_domain"]); //debug
             }
         }

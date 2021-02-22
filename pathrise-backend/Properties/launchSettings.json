@@ -1,0 +1,11 @@
+{
+  "profiles": {
+    "pathrise-backend": {
+      "commandName": "Project"
+    },
+    "pathrise-backend write": {
+      "commandName": "Project",
+      "commandLineArgs": "write"
+    }
+  }
+}
