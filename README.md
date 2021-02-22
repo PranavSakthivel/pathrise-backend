@@ -3,6 +3,8 @@ Take-home challenge for Pathrise.
 
 To get started, download the entire contents of the release.zip from [here.](https://github.com/PranavSakthivel/pathrise-backend/releases)
 
+Resolution data CSV is included in the release zip file.
+
 
 # Instructions
 
