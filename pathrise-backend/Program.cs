@@ -104,6 +104,7 @@ namespace pathrise_backend
                 string JobSource = FindJobSource(record.JobUrl, record.Company);
                 Dictionary<string, object> offer = new Dictionary<string, object>
                 {
+                    { "Id", record.Id },
                     { "JobTitle", record.JobTitle},
                     { "Company", record.Company },
                     { "JobUrl", record.JobUrl },
@@ -123,12 +124,21 @@ namespace pathrise_backend
                 }
                 catch (Exception)
                 {
-
+                    // do nothing
                 }
 
-                if (write) await db.Collection("offers").Document(record.Id.ToString()).SetAsync(offer);
-                Console.WriteLine("Added Offer: " + record.Id + ", " + record.Company + ", " + record.JobUrl + 
-                    ", " + FindJobSource(record.JobUrl, record.Company)); // debug
+
+                try
+                {
+                    if (write) await db.Collection("offers").Document(record.Id.ToString()).SetAsync(offer);
+                    Console.WriteLine("Added Offer: " + record.Id + ", " + record.Company + ", " + record.JobUrl +
+                        ", " + FindJobSource(record.JobUrl, record.Company)); // debug
+                }
+                catch (Exception)
+                {
+                    Console.WriteLine("Unable to add Offer: " + record.Id + ", " + record.Company + ", " + record.JobUrl +
+                        ", " + FindJobSource(record.JobUrl, record.Company)); // debug
+                }
             }
         }
 
